@@ -44,7 +44,7 @@ RUN xx-verify \
     /tmp/makemkv-install/usr/bin/mmgplsrv
 
 # Pull base image.
-FROM jlesage/baseimage-gui:alpine-3.16-v4.6.4
+FROM mcr.microsoft.com/dotnet/runtime:9.0-alpine
 
 ARG DOCKER_IMAGE_VERSION
 ARG MAKEMKV_VERSION
@@ -54,7 +54,7 @@ WORKDIR /tmp
 
 # Install dependencies.
 RUN \
-    add-pkg \
+    apk add \
         openjdk8-jre-base \
         # For beta key fetching.
         wget \
@@ -65,15 +65,16 @@ RUN \
         lsscsi \
         # For the eject command.
         util-linux-misc \
+        mkvtoolnix
         # For the GUI.
-        qt5-qtbase-x11 \
-        adwaita-qt \
-        font-croscore
+        # qt5-qtbase-x11 \
+        # adwaita-qt \
+        # font-croscore
 
 # Generate and install favicons.
-RUN \
-    APP_ICON_URL=https://raw.githubusercontent.com/jlesage/docker-templates/master/jlesage/images/makemkv-icon.png && \
-    install_app_icon.sh "$APP_ICON_URL"
+# RUN \
+#     APP_ICON_URL=https://raw.githubusercontent.com/jlesage/docker-templates/master/jlesage/images/makemkv-icon.png && \
+#     install_app_icon.sh "$APP_ICON_URL"
 
 # Add files.
 COPY rootfs/ /
@@ -84,25 +85,25 @@ COPY --from=makemkv-oss /tmp/makemkv-install/usr /opt/makemkv
 RUN /opt/makemkv/bin/makemkv-update-beta-key /defaults/settings.conf
 
 # Set internal environment variables.
-RUN \
-    set-cont-env APP_NAME "MakeMKV" && \
-    set-cont-env APP_VERSION "$MAKEMKV_VERSION" && \
-    set-cont-env DOCKER_IMAGE_VERSION "$DOCKER_IMAGE_VERSION" && \
-    true
+# RUN \
+#     set-cont-env APP_NAME "MakeMKV" && \
+#     set-cont-env APP_VERSION "$MAKEMKV_VERSION" && \
+#     set-cont-env DOCKER_IMAGE_VERSION "$DOCKER_IMAGE_VERSION" && \
+#     true
 
 # Set public environment variables.
 ENV \
-    MAKEMKV_KEY=BETA \
-    MAKEMKV_GUI=1 \
-    AUTO_DISC_RIPPER=0 \
-    AUTO_DISC_RIPPER_MAKEMKV_PROFILE= \
-    AUTO_DISC_RIPPER_EJECT=0 \
-    AUTO_DISC_RIPPER_PARALLEL_RIP=0 \
-    AUTO_DISC_RIPPER_INTERVAL=5 \
-    AUTO_DISC_RIPPER_MIN_TITLE_LENGTH= \
-    AUTO_DISC_RIPPER_BD_MODE=mkv \
-    AUTO_DISC_RIPPER_FORCE_UNIQUE_OUTPUT_DIR=0 \
-    AUTO_DISC_RIPPER_NO_GUI_PROGRESS=0
+    MAKEMKV_KEY=BETA
+    # MAKEMKV_GUI=1
+    # AUTO_DISC_RIPPER=0 \
+    # AUTO_DISC_RIPPER_MAKEMKV_PROFILE= \
+    # AUTO_DISC_RIPPER_EJECT=0 \
+    # AUTO_DISC_RIPPER_PARALLEL_RIP=0 \
+    # AUTO_DISC_RIPPER_INTERVAL=5 \
+    # AUTO_DISC_RIPPER_MIN_TITLE_LENGTH= \
+    # AUTO_DISC_RIPPER_BD_MODE=mkv \
+    # AUTO_DISC_RIPPER_FORCE_UNIQUE_OUTPUT_DIR=0 \
+    # AUTO_DISC_RIPPER_NO_GUI_PROGRESS=0
 
 # Define mountable directories.
 VOLUME ["/storage"]
