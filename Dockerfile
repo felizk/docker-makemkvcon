@@ -43,6 +43,15 @@ RUN xx-verify \
     /tmp/makemkv-install/usr/bin/mmccextr \
     /tmp/makemkv-install/usr/bin/mmgplsrv
 
+# Build MakeMKV open source binaries.
+FROM --platform=$BUILDPLATFORM alpine:3.16 AS mkclean
+ARG TARGETPLATFORM
+COPY --from=xx / /
+COPY src/mkclean /build
+COPY foundation-source-mkclean-0.9.0 /build
+RUN /build/build.sh
+RUN xx-verify /tmp/mkclean/mkclean 
+
 # Pull base image.
 FROM mcr.microsoft.com/dotnet/runtime:9.0-alpine
 
@@ -80,6 +89,7 @@ RUN \
 COPY rootfs/ /
 COPY --from=makemkv-bin /opt/makemkv /opt/makemkv
 COPY --from=makemkv-oss /tmp/makemkv-install/usr /opt/makemkv
+COPY --from=mkclean /tmp/mkclean /opt/makemkv
 
 # Update the default configuration file with the latest beta key.
 RUN /opt/makemkv/bin/makemkv-update-beta-key /defaults/settings.conf
