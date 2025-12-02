@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.1.2)
 
-project("mkclean")
+project("foundation sources")
 
-# CMake project placed at the root of the sources
+option(CONFIG_MATROSKA2 "Build libmatroska2 and tools" ON)
+
 add_subdirectory("corec")
 add_subdirectory("libebml2")
-add_subdirectory("libmatroska2")
-add_subdirectory("mkclean")
+if(CONFIG_MATROSKA2)
+    add_subdirectory("mkclean")
+    add_subdirectory("libmatroska2")
+endif(CONFIG_MATROSKA2)

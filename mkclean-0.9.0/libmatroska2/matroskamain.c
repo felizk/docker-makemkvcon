@@ -108,7 +108,7 @@ struct matroska_cluster
     ebml_master Base;
     ebml_master *ReadSegInfo;
     ebml_master *WriteSegInfo;
-    timecode_t GlobalTimecode;
+    mkv_timestamp_t GlobalTimestamp;
 };
 
 struct matroska_seekpoint
@@ -131,15 +131,15 @@ static err_t BlockTrackChanged(matroska_block *Block)
 
 static err_t ClusterTimeChanged(matroska_cluster *Cluster)
 {
-    timecode_t ClusterTimecode;
+    mkv_timestamp_t ClusterTimestamp;
 #if defined(CONFIG_EBML_WRITING)
-    timecode_t BlockTimecode;
+    mkv_timestamp_t BlockTimestamp;
     ebml_element *Elt, *GBlock;
 #endif
 
 	Cluster->Base.Base.bNeedDataSizeUpdate = 1;
-    ClusterTimecode = MATROSKA_ClusterTimecode(Cluster);
-    MATROSKA_ClusterSetTimecode(Cluster, ClusterTimecode);
+    ClusterTimestamp = MATROSKA_ClusterTimestamp(Cluster);
+    MATROSKA_ClusterSetTimestamp(Cluster, ClusterTimestamp);
 #if defined(CONFIG_EBML_WRITING)
     for (Elt = EBML_MasterChildren(Cluster); Elt; Elt = EBML_MasterNext(Elt))
     {
@@ -149,25 +149,25 @@ static err_t ClusterTimeChanged(matroska_cluster *Cluster)
             {
                 if (EBML_ElementIsType(GBlock, MATROSKA_getContextBlock()))
                 {
-                    BlockTimecode = MATROSKA_BlockTimecode((matroska_block*)GBlock);
-                    if (BlockTimecode!=INVALID_TIMECODE_T)
-                        MATROSKA_BlockSetTimecode((matroska_block*)GBlock, BlockTimecode, ClusterTimecode);
+                    BlockTimestamp = MATROSKA_BlockTimestamp((matroska_block*)GBlock);
+                    if (BlockTimestamp!=INVALID_TIMESTAMP_T)
+                        MATROSKA_BlockSetTimestamp((matroska_block*)GBlock, BlockTimestamp, ClusterTimestamp);
                     break;
                 }
             }
         }
         else if (EBML_ElementIsType(Elt, MATROSKA_getContextSimpleBlock()))
         {
-            BlockTimecode = MATROSKA_BlockTimecode((matroska_block*)Elt);
-            if (BlockTimecode!=INVALID_TIMECODE_T)
-                MATROSKA_BlockSetTimecode((matroska_block*)Elt, BlockTimecode, ClusterTimecode);
+            BlockTimestamp = MATROSKA_BlockTimestamp((matroska_block*)Elt);
+            if (BlockTimestamp!=INVALID_TIMESTAMP_T)
+                MATROSKA_BlockSetTimestamp((matroska_block*)Elt, BlockTimestamp, ClusterTimestamp);
         }
     }
 #endif
     return ERR_NONE;
 }
 
-static err_t CheckCompression(matroska_block *Block)
+static err_t CheckCompression(matroska_block *Block, int ForProfile)
 {
     ebml_master *Elt, *Header;
     assert(Block->ReadTrack!=NULL);
@@ -187,7 +187,7 @@ static err_t CheckCompression(matroska_block *Block)
             if (!Elt)
                 return ERR_INVALID_DATA; // TODO: support encryption
 
-            Header = (ebml_master*)EBML_MasterGetChild(Elt, MATROSKA_getContextContentCompAlgo());
+            Header = (ebml_master*)EBML_MasterGetChild(Elt, MATROSKA_getContextContentCompAlgo(), ForProfile);
 #if defined(CONFIG_ZLIB) || defined(CONFIG_LZO1X) || defined(CONFIG_BZLIB)
             if (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER)
 #if defined(CONFIG_ZLIB)
@@ -219,7 +219,7 @@ static err_t CheckCompression(matroska_block *Block)
     return ERR_NONE;
 }
 
-err_t MATROSKA_LinkBlockWithReadTracks(matroska_block *Block, ebml_master *Tracks, bool_t UseForWriteToo)
+err_t MATROSKA_LinkBlockWithReadTracks(matroska_block *Block, ebml_master *Tracks, bool_t UseForWriteToo, int ForProfile)
 {
     ebml_element *Track;
     ebml_integer *TrackNum;
@@ -239,13 +239,13 @@ err_t MATROSKA_LinkBlockWithReadTracks(matroska_block *Block, ebml_master *Track
 #endif
             if (WasLinked)
                 return ERR_NONE;
-            return CheckCompression(Block);
+            return CheckCompression(Block, ForProfile);
         }
     }
     return ERR_INVALID_DATA;
 }
 
-err_t MATROSKA_LinkBlockReadTrack(matroska_block *Block, ebml_master *Track, bool_t UseForWriteToo)
+err_t MATROSKA_LinkBlockReadTrack(matroska_block *Block, ebml_master *Track, bool_t UseForWriteToo, int ForProfile)
 {
     ebml_integer *TrackNum;
     bool_t WasLinked = Block->ReadTrack!=NULL;
@@ -263,13 +263,13 @@ err_t MATROSKA_LinkBlockReadTrack(matroska_block *Block, ebml_master *Track, boo
 #endif
         if (WasLinked)
             return ERR_NONE;
-        return CheckCompression(Block);
+        return CheckCompression(Block, ForProfile);
     }
     return ERR_INVALID_DATA;
 }
 
 #if defined(CONFIG_EBML_WRITING)
-err_t MATROSKA_LinkBlockWithWriteTracks(matroska_block *Block, ebml_master *Tracks)
+err_t MATROSKA_LinkBlockWithWriteTracks(matroska_block *Block, ebml_master *Tracks, int ForProfile)
 {
     ebml_master *Track;
     ebml_integer *TrackNum;
@@ -285,13 +285,13 @@ err_t MATROSKA_LinkBlockWithWriteTracks(matroska_block *Block, ebml_master *Trac
             Node_SET(Block,MATROSKA_BLOCK_WRITE_TRACK,&Track);
             if (WasLinked)
                 return ERR_NONE;
-            return CheckCompression(Block);
+            return CheckCompression(Block, ForProfile);
         }
     }
     return ERR_INVALID_DATA;
 }
 
-err_t MATROSKA_LinkBlockWriteTrack(matroska_block *Block, ebml_master *Track)
+err_t MATROSKA_LinkBlockWriteTrack(matroska_block *Block, ebml_master *Track, int ForProfile)
 {
     ebml_integer *TrackNum;
     bool_t WasLinked = Block->WriteTrack!=NULL;
@@ -305,7 +305,7 @@ err_t MATROSKA_LinkBlockWriteTrack(matroska_block *Block, ebml_master *Track)
         Node_SET(Block,MATROSKA_BLOCK_WRITE_TRACK,&Track);
         if (WasLinked)
             return ERR_NONE;
-        return CheckCompression(Block);
+        return CheckCompression(Block, ForProfile);
     }
     return ERR_INVALID_DATA;
 }
@@ -404,11 +404,11 @@ err_t MATROSKA_MetaSeekUpdate(matroska_seekpoint *MetaSeek)
     if (Link==NULL)
         return ERR_INVALID_DATA;
 
-    WSeekID = EBML_MasterFindFirstElt((ebml_master*)MetaSeek,MATROSKA_getContextSeekID(),1,0);
+    WSeekID = EBML_MasterFindFirstElt((ebml_master*)MetaSeek,MATROSKA_getContextSeekID(),1,0,0);
     IdSize = EBML_FillBufferID(IdBuffer,sizeof(IdBuffer),EBML_ElementClassID(Link));
     EBML_BinarySetData((ebml_binary*)WSeekID,IdBuffer,IdSize);
 
-    WSeekPosSegmentInfo = EBML_MasterFindFirstElt((ebml_master*)MetaSeek,MATROSKA_getContextSeekPosition(),1,0);
+    WSeekPosSegmentInfo = EBML_MasterFindFirstElt((ebml_master*)MetaSeek,MATROSKA_getContextSeekPosition(),1,0,0);
     EBML_IntegerSetValue((ebml_integer*)WSeekPosSegmentInfo, EBML_ElementPosition(Link) - EBML_ElementPositionData(RSegment));
 
     return Err;
@@ -492,8 +492,8 @@ err_t MATROSKA_LinkCuePointBlock(matroska_cuepoint *CuePoint, matroska_block *Bl
 
 static int MATROSKA_BlockCmp(const matroska_block *BlockA, const matroska_block *BlockB)
 {
-    timecode_t TimeA = MATROSKA_BlockTimecode((matroska_block*)BlockA);
-    timecode_t TimeB = MATROSKA_BlockTimecode((matroska_block*)BlockB);
+    mkv_timestamp_t TimeA = MATROSKA_BlockTimestamp((matroska_block*)BlockA);
+    mkv_timestamp_t TimeB = MATROSKA_BlockTimestamp((matroska_block*)BlockB);
     if (TimeA != TimeB)
         return (int)((TimeA - TimeB)/100000);
     return MATROSKA_BlockTrackNum(BlockB) - MATROSKA_BlockTrackNum(BlockA); // usually the first track is video, so put audio/subs first
@@ -527,21 +527,21 @@ void MATROSKA_ClusterSort(matroska_cluster *Cluster)
     EBML_MasterSort((ebml_master*)Cluster,(arraycmp)ClusterEltCmp,Cluster);
 }
 
-void MATROSKA_ClusterSetTimecode(matroska_cluster *Cluster, timecode_t Timecode)
+void MATROSKA_ClusterSetTimestamp(matroska_cluster *Cluster, mkv_timestamp_t Timestamp)
 {
-	ebml_integer *TimecodeElt;
+	ebml_integer *TimestampElt;
 #if defined(CONFIG_EBML_WRITING)
     ebml_element *Elt, *GBlock;
-    timecode_t BlockTimeCode;
+    mkv_timestamp_t BlockTimestamp;
 #endif
 
     assert(EBML_ElementIsType((ebml_element*)Cluster, MATROSKA_getContextCluster()));
-    Cluster->GlobalTimecode = Timecode;
-    TimecodeElt = (ebml_integer*)EBML_MasterGetChild((ebml_master*)Cluster,MATROSKA_getContextTimestamp());
+    Cluster->GlobalTimestamp = Timestamp;
+    TimestampElt = (ebml_integer*)EBML_MasterGetChild((ebml_master*)Cluster,MATROSKA_getContextTimestamp(), PROFILE_MATROSKA_ANY);
 #if defined(CONFIG_EBML_WRITING)
 	assert(Cluster->WriteSegInfo);
-	EBML_IntegerSetValue(TimecodeElt, Scale64(Timecode,1,MATROSKA_SegmentInfoTimecodeScale(Cluster->WriteSegInfo)));
-    // update all the blocks LocalTimecode
+	EBML_IntegerSetValue(TimestampElt, Scale64(Timestamp,1,MATROSKA_SegmentInfoTimestampScale(Cluster->WriteSegInfo)));
+    // update all the blocks LocalTimestamp
     for (Elt = EBML_MasterChildren(Cluster); Elt; Elt = EBML_MasterNext(Elt))
     {
         if (EBML_ElementIsType(Elt, MATROSKA_getContextBlockGroup()))
@@ -550,87 +550,87 @@ void MATROSKA_ClusterSetTimecode(matroska_cluster *Cluster, timecode_t Timecode)
             {
                 if (EBML_ElementIsType(GBlock, MATROSKA_getContextBlock()))
                 {
-                    BlockTimeCode = MATROSKA_BlockTimecode((matroska_block*)GBlock);
-                    if (BlockTimeCode!=INVALID_TIMECODE_T)
-                        MATROSKA_BlockSetTimecode((matroska_block*)GBlock, BlockTimeCode, Timecode);
+                    BlockTimestamp = MATROSKA_BlockTimestamp((matroska_block*)GBlock);
+                    if (BlockTimestamp!=INVALID_TIMESTAMP_T)
+                        MATROSKA_BlockSetTimestamp((matroska_block*)GBlock, BlockTimestamp, Timestamp);
                     break;
                 }
             }
         }
         else if (EBML_ElementIsType(Elt, MATROSKA_getContextSimpleBlock()))
         {
-            BlockTimeCode = MATROSKA_BlockTimecode((matroska_block*)Elt);
-            if (BlockTimeCode!=INVALID_TIMECODE_T)
-                MATROSKA_BlockSetTimecode((matroska_block*)Elt, BlockTimeCode, Timecode);
+            BlockTimestamp = MATROSKA_BlockTimestamp((matroska_block*)Elt);
+            if (BlockTimestamp!=INVALID_TIMESTAMP_T)
+                MATROSKA_BlockSetTimestamp((matroska_block*)Elt, BlockTimestamp, Timestamp);
         }
     }
 #else
 	assert(Cluster->ReadSegInfo);
-	EBML_IntegerSetValue(TimecodeElt, Scale64(Timecode,1,MATROSKA_SegmentInfoTimecodeScale(Cluster->ReadSegInfo)));
+	EBML_IntegerSetValue(TimestampElt, Scale64(Timestamp,1,MATROSKA_SegmentInfoTimestampScale(Cluster->ReadSegInfo)));
 #endif
 }
 
-timecode_t MATROSKA_ClusterTimecode(matroska_cluster *Cluster)
+mkv_timestamp_t MATROSKA_ClusterTimestamp(matroska_cluster *Cluster)
 {
     assert(EBML_ElementIsType((ebml_element*)Cluster, MATROSKA_getContextCluster()));
-    if (Cluster->GlobalTimecode == INVALID_TIMECODE_T)
+    if (Cluster->GlobalTimestamp == INVALID_TIMESTAMP_T)
     {
-        ebml_integer *Timecode = (ebml_integer*)EBML_MasterFindChild((ebml_master*)Cluster,MATROSKA_getContextTimestamp());
-        if (Timecode)
-            Cluster->GlobalTimecode = EBML_IntegerValue(Timecode) * MATROSKA_SegmentInfoTimecodeScale(Cluster->ReadSegInfo);
+        ebml_integer *Timestamp = (ebml_integer*)EBML_MasterFindChild((ebml_master*)Cluster,MATROSKA_getContextTimestamp());
+        if (Timestamp)
+            Cluster->GlobalTimestamp = EBML_IntegerValue(Timestamp) * MATROSKA_SegmentInfoTimestampScale(Cluster->ReadSegInfo);
     }
-    return Cluster->GlobalTimecode;
+    return Cluster->GlobalTimestamp;
 }
 
-timecode_t MATROSKA_ClusterTimecodeScale(matroska_cluster *Cluster, bool_t Read)
+mkv_timestamp_t MATROSKA_ClusterTimestampScale(matroska_cluster *Cluster, bool_t Read)
 {
 #if defined(CONFIG_EBML_WRITING)
     if (!Read)
-        return MATROSKA_SegmentInfoTimecodeScale(Cluster->WriteSegInfo);
+        return MATROSKA_SegmentInfoTimestampScale(Cluster->WriteSegInfo);
 #endif
-    return MATROSKA_SegmentInfoTimecodeScale(Cluster->ReadSegInfo);
+    return MATROSKA_SegmentInfoTimestampScale(Cluster->ReadSegInfo);
 }
 
-err_t MATROSKA_BlockSetTimecode(matroska_block *Block, timecode_t Timecode, timecode_t ClusterTimecode)
+err_t MATROSKA_BlockSetTimestamp(matroska_block *Block, mkv_timestamp_t Timestamp, mkv_timestamp_t ClusterTimestamp)
 {
-	int64_t InternalTimecode;
+	int64_t InternalTimestamp;
     assert(Node_IsPartOf(Block,MATROSKA_BLOCK_CLASS));
-    assert(Timecode!=INVALID_TIMECODE_T);
+    assert(Timestamp!=INVALID_TIMESTAMP_T);
 #if defined(CONFIG_EBML_WRITING)
-	InternalTimecode = Scale64(Timecode - ClusterTimecode,1,(int64_t)(MATROSKA_SegmentInfoTimecodeScale(Block->WriteSegInfo) * MATROSKA_TrackTimecodeScale(Block->WriteTrack)));
+	InternalTimestamp = Scale64(Timestamp - ClusterTimestamp,1,(int64_t)(MATROSKA_SegmentInfoTimestampScale(Block->WriteSegInfo) * MATROSKA_TrackTimestampScale(Block->WriteTrack)));
 #else
-	InternalTimecode = Scale64(Timecode - ClusterTimecode,1,(int64_t)(MATROSKA_SegmentInfoTimecodeScale(Block->ReadSegInfo) * MATROSKA_TrackTimecodeScale(Block->ReadTrack)));
+	InternalTimestamp = Scale64(Timestamp - ClusterTimestamp,1,(int64_t)(MATROSKA_SegmentInfoTimestampScale(Block->ReadSegInfo) * MATROSKA_TrackTimestampScale(Block->ReadTrack)));
 #endif
-	if (InternalTimecode > 32767 || InternalTimecode < -32768)
+	if (InternalTimestamp > 32767 || InternalTimestamp < -32768)
 		return ERR_INVALID_DATA;
-	Block->LocalTimecode = (int16_t)InternalTimecode;
-    Block->LocalTimecodeUsed = 1;
+	Block->LocalTimestamp = (int16_t)InternalTimestamp;
+    Block->LocalTimestampUsed = 1;
 	return ERR_NONE;
 }
 
-timecode_t MATROSKA_BlockTimecode(matroska_block *Block)
+mkv_timestamp_t MATROSKA_BlockTimestamp(matroska_block *Block)
 {
     ebml_element *Cluster;
     assert(Node_IsPartOf(Block,MATROSKA_BLOCK_CLASS));
-	if (Block->GlobalTimecode!=INVALID_TIMECODE_T)
-		return Block->GlobalTimecode;
+	if (Block->GlobalTimestamp!=INVALID_TIMESTAMP_T)
+		return Block->GlobalTimestamp;
     if (Block->ReadTrack==NULL)
-        return INVALID_TIMECODE_T;
-    assert(Block->LocalTimecodeUsed);
+        return INVALID_TIMESTAMP_T;
+    assert(Block->LocalTimestampUsed);
     Cluster = EBML_ElementParent(Block);
     while (Cluster && !EBML_ElementIsType(Cluster, MATROSKA_getContextCluster()))
         Cluster = EBML_ElementParent(Cluster);
     if (!Cluster)
-        return INVALID_TIMECODE_T;
-    Block->GlobalTimecode = MATROSKA_ClusterTimecode((matroska_cluster*)Cluster) + (timecode_t)(Block->LocalTimecode * MATROSKA_SegmentInfoTimecodeScale(Block->ReadSegInfo) * MATROSKA_TrackTimecodeScale(Block->ReadTrack));
-    MATROSKA_BlockSetTimecode(Block, Block->GlobalTimecode, MATROSKA_ClusterTimecode((matroska_cluster*)Cluster));
-    return Block->GlobalTimecode;
+        return INVALID_TIMESTAMP_T;
+    Block->GlobalTimestamp = MATROSKA_ClusterTimestamp((matroska_cluster*)Cluster) + (mkv_timestamp_t)(Block->LocalTimestamp * MATROSKA_SegmentInfoTimestampScale(Block->ReadSegInfo) * MATROSKA_TrackTimestampScale(Block->ReadTrack));
+    MATROSKA_BlockSetTimestamp(Block, Block->GlobalTimestamp, MATROSKA_ClusterTimestamp((matroska_cluster*)Cluster));
+    return Block->GlobalTimestamp;
 }
 
 int16_t MATROSKA_BlockTrackNum(const matroska_block *Block)
 {
     assert(Node_IsPartOf(Block,MATROSKA_BLOCK_CLASS));
-    assert(Block->LocalTimecodeUsed);
+    assert(Block->LocalTimestampUsed);
     return Block->TrackNumber;
 }
 
@@ -684,7 +684,7 @@ void MATROSKA_BlockSetDiscardable(matroska_block *Block, bool_t Set)
 bool_t MATROSKA_BlockLaced(const matroska_block *Block)
 {
     assert(Node_IsPartOf(Block,MATROSKA_BLOCK_CLASS));
-    assert(Block->LocalTimecodeUsed);
+    assert(Block->LocalTimestampUsed);
     return Block->Lacing != LACING_NONE;
 }
 
@@ -714,76 +714,76 @@ void MATROSKA_AttachmentSort(ebml_master *Attachments)
     EBML_MasterSort(Attachments,NULL,NULL);
 }
 
-timecode_t MATROSKA_SegmentInfoTimecodeScale(const ebml_master *SegmentInfo)
+mkv_timestamp_t MATROSKA_SegmentInfoTimestampScale(const ebml_master *SegmentInfo)
 {
-    ebml_integer *TimecodeScale = NULL;
+    ebml_integer *TimestampScale = NULL;
     if (SegmentInfo)
     {
         assert(EBML_ElementIsType((ebml_element*)SegmentInfo, MATROSKA_getContextInfo()));
-        TimecodeScale = (ebml_integer*)EBML_MasterFindChild((ebml_master*)SegmentInfo,MATROSKA_getContextTimestampScale());
+        TimestampScale = (ebml_integer*)EBML_MasterFindChild((ebml_master*)SegmentInfo,MATROSKA_getContextTimestampScale());
     }
-    if (!TimecodeScale)
+    if (!TimestampScale)
         return MATROSKA_getContextTimestampScale()->DefaultValue;
-    return EBML_IntegerValue(TimecodeScale);
+    return EBML_IntegerValue(TimestampScale);
 }
 
-double MATROSKA_TrackTimecodeScale(const ebml_master *Track)
+double MATROSKA_TrackTimestampScale(const ebml_master *Track)
 {
-    ebml_element *TimecodeScale;
+    ebml_element *TimestampScale;
     assert(EBML_ElementIsType((ebml_element*)Track, MATROSKA_getContextTrackEntry()));
-    TimecodeScale = EBML_MasterFindChild((ebml_master*)Track,MATROSKA_getContextTrackTimestampScale());
-    if (!TimecodeScale)
+    TimestampScale = EBML_MasterFindChild((ebml_master*)Track,MATROSKA_getContextTrackTimestampScale());
+    if (!TimestampScale)
         return MATROSKA_getContextTrackTimestampScale()->DefaultValue;
-    return ((ebml_float*)TimecodeScale)->Value;
+    return ((ebml_float*)TimestampScale)->Value;
 }
 
-timecode_t MATROSKA_CueTimecode(const matroska_cuepoint *Cue)
+mkv_timestamp_t MATROSKA_CueTimestamp(const matroska_cuepoint *Cue)
 {
-    ebml_integer *TimeCode;
+    ebml_integer *Timestamp;
     assert(EBML_ElementIsType((ebml_element*)Cue, MATROSKA_getContextCuePoint()));
-    TimeCode = (ebml_integer*) EBML_MasterFindChild((ebml_master*)Cue,MATROSKA_getContextCueTime());
-    if (!TimeCode)
-        return INVALID_TIMECODE_T;
-    return EBML_IntegerValue(TimeCode) * MATROSKA_SegmentInfoTimecodeScale(Cue->SegInfo);
+    Timestamp = (ebml_integer*) EBML_MasterFindChild((ebml_master*)Cue,MATROSKA_getContextCueTime());
+    if (!Timestamp)
+        return INVALID_TIMESTAMP_T;
+    return EBML_IntegerValue(Timestamp) * MATROSKA_SegmentInfoTimestampScale(Cue->SegInfo);
 }
 
 filepos_t MATROSKA_CuePosInSegment(const matroska_cuepoint *Cue)
 {
-    ebml_element *TimeCode;
+    ebml_element *Timestamp;
     assert(EBML_ElementIsType((ebml_element*)Cue, MATROSKA_getContextCuePoint()));
-    TimeCode = EBML_MasterFindChild((ebml_master*)Cue,MATROSKA_getContextCueTrackPositions());
-    if (!TimeCode)
-        return INVALID_TIMECODE_T;
-    TimeCode = EBML_MasterFindChild((ebml_master*)TimeCode,MATROSKA_getContextCueClusterPosition());
-    if (!TimeCode)
-        return INVALID_TIMECODE_T;
-    return EBML_IntegerValue((ebml_integer*)TimeCode);
+    Timestamp = EBML_MasterFindChild((ebml_master*)Cue,MATROSKA_getContextCueTrackPositions());
+    if (!Timestamp)
+        return INVALID_TIMESTAMP_T;
+    Timestamp = EBML_MasterFindChild((ebml_master*)Timestamp,MATROSKA_getContextCueClusterPosition());
+    if (!Timestamp)
+        return INVALID_TIMESTAMP_T;
+    return EBML_IntegerValue((ebml_integer*)Timestamp);
 }
 
-err_t MATROSKA_CuePointUpdate(matroska_cuepoint *Cue, ebml_element *Segment)
+err_t MATROSKA_CuePointUpdate(matroska_cuepoint *Cue, ebml_element *Segment, int ForProfile)
 {
-    ebml_element *TimecodeElt, *Elt, *PosInCluster;
+    ebml_element *TimestampElt, *Elt, *PosInCluster;
     ebml_integer *TrackNum;
     assert(EBML_ElementIsType((ebml_element*)Cue, MATROSKA_getContextCuePoint()));
     assert(Cue->Block);
     assert(Cue->SegInfo);
     assert(Segment); // we need the segment location
 	EBML_MasterErase((ebml_master*)Cue);
-	EBML_MasterAddMandatory((ebml_master*)Cue,1);
-    TimecodeElt = EBML_MasterGetChild((ebml_master*)Cue,MATROSKA_getContextCueTime());
-    if (!TimecodeElt)
+	EBML_MasterAddMandatory((ebml_master*)Cue,1, ForProfile);
+    TimestampElt = EBML_MasterGetChild((ebml_master*)Cue,MATROSKA_getContextCueTime(), ForProfile);
+    if (!TimestampElt)
         return ERR_OUT_OF_MEMORY;
-    EBML_IntegerSetValue((ebml_integer*)TimecodeElt, Scale64(MATROSKA_BlockTimecode(Cue->Block),1,MATROSKA_SegmentInfoTimecodeScale(Cue->SegInfo)));
+    EBML_IntegerSetValue((ebml_integer*)TimestampElt, Scale64(MATROSKA_BlockTimestamp(Cue->Block),1,MATROSKA_SegmentInfoTimestampScale(Cue->SegInfo)));
 
-    Elt = EBML_MasterGetChild((ebml_master*)Cue,MATROSKA_getContextCueTrackPositions());
+    Elt = EBML_MasterGetChild((ebml_master*)Cue,MATROSKA_getContextCueTrackPositions(), ForProfile);
     if (!Elt)
         return ERR_OUT_OF_MEMORY;
-	TrackNum = (ebml_integer*)EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextCueTrack());
+	TrackNum = (ebml_integer*)EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextCueTrack(), ForProfile);
     if (!TrackNum)
         return ERR_OUT_OF_MEMORY;
 	EBML_IntegerSetValue(TrackNum, MATROSKA_BlockTrackNum(Cue->Block));
 	
-    PosInCluster = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextCueClusterPosition());
+    PosInCluster = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextCueClusterPosition(), ForProfile);
     if (!PosInCluster)
         return ERR_OUT_OF_MEMORY;
     Elt = EBML_ElementParent(Cue->Block);
@@ -799,7 +799,7 @@ err_t MATROSKA_CuePointUpdate(matroska_cuepoint *Cue, ebml_element *Segment)
     return ERR_NONE;
 }
 
-matroska_block *MATROSKA_GetBlockForTimecode(matroska_cluster *Cluster, timecode_t Timecode, int16_t Track)
+matroska_block *MATROSKA_GetBlockForTimestamp(matroska_cluster *Cluster, mkv_timestamp_t Timestamp, int16_t Track)
 {
     ebml_element *Block, *GBlock;
     for (Block = EBML_MasterChildren(Cluster);Block;Block=EBML_MasterNext(Block))
@@ -811,7 +811,7 @@ matroska_block *MATROSKA_GetBlockForTimecode(matroska_cluster *Cluster, timecode
                 if (EBML_ElementIsType(GBlock, MATROSKA_getContextBlock()))
                 {
                     if (MATROSKA_BlockTrackNum((matroska_block*)GBlock) == Track &&
-                        MATROSKA_BlockTimecode((matroska_block*)GBlock) == Timecode)
+                        MATROSKA_BlockTimestamp((matroska_block*)GBlock) == Timestamp)
                     {
                         return (matroska_block*)GBlock;
                     }
@@ -821,7 +821,7 @@ matroska_block *MATROSKA_GetBlockForTimecode(matroska_cluster *Cluster, timecode
         else if (EBML_ElementIsType(Block, MATROSKA_getContextSimpleBlock()))
         {
             if (MATROSKA_BlockTrackNum((matroska_block*)Block) == Track &&
-                MATROSKA_BlockTimecode((matroska_block*)Block) == Timecode)
+                MATROSKA_BlockTimestamp((matroska_block*)Block) == Timestamp)
             {
                 return (matroska_block*)Block;
             }
@@ -830,7 +830,7 @@ matroska_block *MATROSKA_GetBlockForTimecode(matroska_cluster *Cluster, timecode
     return NULL;
 }
 
-void MATROSKA_LinkClusterBlocks(matroska_cluster *Cluster, ebml_master *RSegmentInfo, ebml_master *Tracks, bool_t KeepUnmatched)
+void MATROSKA_LinkClusterBlocks(matroska_cluster *Cluster, ebml_master *RSegmentInfo, ebml_master *Tracks, bool_t KeepUnmatched, int ForProfile)
 {
     ebml_element *Block, *GBlock,*NextBlock;
 
@@ -849,7 +849,7 @@ void MATROSKA_LinkClusterBlocks(matroska_cluster *Cluster, ebml_master *RSegment
 			{
 				if (EBML_ElementIsType(GBlock, MATROSKA_getContextBlock()))
 				{
-					if (MATROSKA_LinkBlockWithReadTracks((matroska_block*)GBlock,Tracks,1)!=ERR_NONE && !KeepUnmatched)
+					if (MATROSKA_LinkBlockWithReadTracks((matroska_block*)GBlock,Tracks,1,ForProfile)!=ERR_NONE && !KeepUnmatched)
                         NodeDelete((node*)Block);
                     else
 					    MATROSKA_LinkBlockReadSegmentInfo((matroska_block*)GBlock,RSegmentInfo,1);
@@ -859,7 +859,7 @@ void MATROSKA_LinkClusterBlocks(matroska_cluster *Cluster, ebml_master *RSegment
 		}
 		else if (EBML_ElementIsType(Block, MATROSKA_getContextSimpleBlock()))
 		{
-			if (MATROSKA_LinkBlockWithReadTracks((matroska_block*)Block,Tracks,1)!=ERR_NONE && !KeepUnmatched)
+			if (MATROSKA_LinkBlockWithReadTracks((matroska_block*)Block,Tracks,1,ForProfile)!=ERR_NONE && !KeepUnmatched)
                 NodeDelete((node*)Block);
             else
     			MATROSKA_LinkBlockReadSegmentInfo((matroska_block*)Block,RSegmentInfo,1);
@@ -879,7 +879,7 @@ static size_t GetBlockHeadSize(const matroska_block *Element)
 
 err_t MATROSKA_BlockReleaseData(matroska_block *Block, bool_t IncludingNotRead)
 {
-    if (!IncludingNotRead && Block->GlobalTimecode==INVALID_TIMECODE_T)
+    if (!IncludingNotRead && Block->GlobalTimestamp==INVALID_TIMESTAMP_T)
         return ERR_NONE;
     ArrayClear(&Block->Data);
     Block->Base.Base.bValueIsSet = 0;
@@ -915,8 +915,8 @@ err_t MATROSKA_BlockSkipToFrame(const matroska_block *Block, stream *Input, size
 }
 
 // TODO: support zero copy reading (read the frames directly into a buffer with a callback per frame)
-//       pass the Input stream and the amount to read per frame, give the timecode of the frame and get the end timecode in return, get an error code if reading failed
-err_t MATROSKA_BlockReadData(matroska_block *Element, stream *Input)
+//       pass the Input stream and the amount to read per frame, give the timestamp of the frame and get the end timestamp in return, get an error code if reading failed
+err_t MATROSKA_BlockReadData(matroska_block *Element, stream *Input, int ForProfile)
 {
     size_t Read,BufSize;
     size_t NumFrame;
@@ -946,7 +946,7 @@ err_t MATROSKA_BlockReadData(matroska_block *Element, stream *Input)
                 if (!Elt)
                     return ERR_NOT_SUPPORTED; // TODO: support encryption
 
-                Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo());
+                Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo(),ForProfile);
 #if defined(CONFIG_ZLIB) || defined(CONFIG_LZO1X) || defined(CONFIG_BZLIB)
                 if (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER)
 #if defined(CONFIG_ZLIB)
@@ -1310,7 +1310,7 @@ err_t MATROSKA_BlockReadData(matroska_block *Element, stream *Input)
 
 #if defined(CONFIG_EBML_WRITING)
 	if (Element->ReadTrack != Element->WriteTrack || Element->ReadSegInfo != Element->WriteSegInfo)
-		// TODO: only if the track compression/timecode scale is different
+		// TODO: only if the track compression/timestamp scale is different
 		Element->Base.Base.bNeedDataSizeUpdate = 1;
 #endif
 
@@ -1320,15 +1320,15 @@ failed:
 
 static err_t SetBlockParent(matroska_block *Block, void* Parent, void* Before)
 {
-	// update the timecode
-	timecode_t AbsTimeCode;
+	// update the timestamp
+	mkv_timestamp_t AbsTimestamp;
 	err_t Result = ERR_NONE;
-	if (Block->LocalTimecodeUsed && Parent && NodeTree_Parent(Block))
+	if (Block->LocalTimestampUsed && Parent && NodeTree_Parent(Block))
 	{
 		assert(Node_IsPartOf(Parent,MATROSKA_CLUSTER_CLASS));
-		AbsTimeCode = MATROSKA_BlockTimecode(Block);
-        assert(AbsTimeCode != INVALID_TIMECODE_T);
-		Result = MATROSKA_BlockSetTimecode(Block,AbsTimeCode,MATROSKA_ClusterTimecode((matroska_cluster*)Parent));
+		AbsTimestamp = MATROSKA_BlockTimestamp(Block);
+        assert(AbsTimestamp != INVALID_TIMESTAMP_T);
+		Result = MATROSKA_BlockSetTimestamp(Block,AbsTimestamp,MATROSKA_ClusterTimestamp((matroska_cluster*)Parent));
 	}
 	if (Result==ERR_NONE)
 		Result = INHERITED(Block,nodetree_vmt,MATROSKA_BLOCK_CLASS)->SetParent(Block, Parent, Before);
@@ -1337,16 +1337,16 @@ static err_t SetBlockParent(matroska_block *Block, void* Parent, void* Before)
 
 static err_t SetBlockGroupParent(ebml_master *Element, void* Parent, void* Before)
 {
-	// update the timecode
+	// update the timestamp
 	err_t Result = ERR_NONE;
 	matroska_block *Block = (matroska_block*)EBML_MasterFindChild(Element, MATROSKA_getContextBlock());
-	timecode_t AbsTimeCode;
-	if (Block && Block->LocalTimecodeUsed && Parent && NodeTree_Parent(Block) && NodeTree_Parent(NodeTree_Parent(Block)))
+	mkv_timestamp_t AbsTimestamp;
+	if (Block && Block->LocalTimestampUsed && Parent && NodeTree_Parent(Block) && NodeTree_Parent(NodeTree_Parent(Block)))
 	{
 		assert(Node_IsPartOf(Parent,MATROSKA_CLUSTER_CLASS));
-		AbsTimeCode = MATROSKA_BlockTimecode(Block);
-        assert(AbsTimeCode != INVALID_TIMECODE_T);
-		Result = MATROSKA_BlockSetTimecode(Block,AbsTimeCode,MATROSKA_ClusterTimecode((matroska_cluster*)Parent));
+		AbsTimestamp = MATROSKA_BlockTimestamp(Block);
+        assert(AbsTimestamp != INVALID_TIMESTAMP_T);
+		Result = MATROSKA_BlockSetTimestamp(Block,AbsTimestamp,MATROSKA_ClusterTimestamp((matroska_cluster*)Parent));
 	}
 	if (Result==ERR_NONE)
 		Result = INHERITED(Element,nodetree_vmt,MATROSKA_BLOCKGROUP_CLASS)->SetParent(Element, Parent, Before);
@@ -1404,8 +1404,8 @@ static err_t ReadBlockData(matroska_block *Element, stream *Input, const ebml_pa
 		BlockHeadSize++;
 	}
 
-	Element->LocalTimecode = LOAD16BE(cursor);
-	Element->LocalTimecodeUsed = 1;
+	Element->LocalTimestamp = LOAD16BE(cursor);
+	Element->LocalTimestampUsed = 1;
 	cursor += 2;
 
 	if (EBML_ElementIsType((ebml_element*)Element, MATROSKA_getContextSimpleBlock()))
@@ -1506,7 +1506,7 @@ static err_t ReadBlockData(matroska_block *Element, stream *Input, const ebml_pa
 			Result = ERR_NONE;
 	}
     else
-        Result = MATROSKA_BlockReadData(Element, Input);
+        Result = MATROSKA_BlockReadData(Element, Input, ParserContext->Profile);
 
 failed:
     return Result;
@@ -1528,31 +1528,31 @@ err_t MATROSKA_BlockGetFrame(const matroska_block *Block, size_t FrameNum, matro
         return ERR_INVALID_PARAM;
 
 	Frame->Data = WithData ? ARRAYBEGIN(Block->Data,uint8_t) : NULL;
-    Frame->Timecode = MATROSKA_BlockTimecode((matroska_block*)Block);
+    Frame->Timestamp = MATROSKA_BlockTimestamp((matroska_block*)Block);
     for (i=0;i<FrameNum;++i)
     {
         if (WithData) Frame->Data += ARRAYBEGIN(Block->SizeList,uint32_t)[i];
-        if (Frame->Timecode != INVALID_TIMECODE_T)
+        if (Frame->Timestamp != INVALID_TIMESTAMP_T)
         {
-            if (i < ARRAYCOUNT(Block->Durations,timecode_t) && ARRAYBEGIN(Block->Durations,timecode_t)[i] != INVALID_TIMECODE_T)
-                Frame->Timecode += ARRAYBEGIN(Block->Durations,timecode_t)[i];
+            if (i < ARRAYCOUNT(Block->Durations,mkv_timestamp_t) && ARRAYBEGIN(Block->Durations,mkv_timestamp_t)[i] != INVALID_TIMESTAMP_T)
+                Frame->Timestamp += ARRAYBEGIN(Block->Durations,mkv_timestamp_t)[i];
             else
-                Frame->Timecode = INVALID_TIMECODE_T;
+                Frame->Timestamp = INVALID_TIMESTAMP_T;
         }
     }
 
     Frame->Size = ARRAYBEGIN(Block->SizeList,uint32_t)[i];
-    if (FrameNum < ARRAYCOUNT(Block->Durations,timecode_t))
-        Frame->Duration = ARRAYBEGIN(Block->Durations,timecode_t)[i];
+    if (FrameNum < ARRAYCOUNT(Block->Durations,mkv_timestamp_t))
+        Frame->Duration = ARRAYBEGIN(Block->Durations,mkv_timestamp_t)[i];
     else
-        Frame->Duration = INVALID_TIMECODE_T;
+        Frame->Duration = INVALID_TIMESTAMP_T;
     return ERR_NONE;
 }
 
-err_t MATROSKA_BlockAppendFrame(matroska_block *Block, const matroska_frame *Frame, timecode_t ClusterTimecode)
+err_t MATROSKA_BlockAppendFrame(matroska_block *Block, const matroska_frame *Frame, mkv_timestamp_t ClusterTimestamp)
 {
-    if (!Block->Base.Base.bValueIsSet && Frame->Timecode!=INVALID_TIMECODE_T)
-        MATROSKA_BlockSetTimecode(Block,Frame->Timecode,ClusterTimecode);
+    if (!Block->Base.Base.bValueIsSet && Frame->Timestamp!=INVALID_TIMESTAMP_T)
+        MATROSKA_BlockSetTimestamp(Block,Frame->Timestamp,ClusterTimestamp);
     ArrayAppend(&Block->Data,Frame->Data,Frame->Size,0);
     ArrayAppend(&Block->Durations,&Frame->Duration,sizeof(Frame->Duration),0);
     ArrayAppend(&Block->SizeList,&Frame->Size,sizeof(Frame->Size),0);
@@ -1679,7 +1679,7 @@ static filepos_t GetBlockFrameSize(const matroska_block *Element, size_t Frame, 
 }
 
 #if defined(CONFIG_EBML_WRITING)
-static char GetBestLacingType(const matroska_block *Element)
+static char GetBestLacingType(const matroska_block *Element, int ForProfile)
 {
 	int XiphLacingSize, EbmlLacingSize;
     size_t i;
@@ -1718,7 +1718,7 @@ static char GetBestLacingType(const matroska_block *Element)
             if (!Elt)
                 return 0; // TODO: support encryption
 
-            Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo());
+            Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo(),ForProfile);
 #if defined(CONFIG_ZLIB)
             if (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER && EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_ZLIB)
 #else
@@ -1756,13 +1756,12 @@ static char GetBestLacingType(const matroska_block *Element)
 		return LACING_EBML;
 }
 
-static err_t RenderBlockData(matroska_block *Element, stream *Output, bool_t bForceWithoutMandatory, bool_t bWithDefault, filepos_t *Rendered)
+static err_t RenderBlockData(matroska_block *Element, stream *Output, bool_t bForceWithoutMandatory, bool_t bWithDefault, int ForProfile, filepos_t *Rendered)
 {
     err_t Err = ERR_NONE;
     uint8_t BlockHead[5], *Cursor;
     size_t ToWrite, Written, BlockHeadSize = 4;
     ebml_element *Elt, *Elt2, *Header = NULL;
-    int32_t *i;
     int CompressionScope = MATROSKA_COMPR_SCOPE_BLOCK;
     assert(Element->Lacing != LACING_AUTO);
 
@@ -1781,7 +1780,7 @@ static err_t RenderBlockData(matroska_block *Element, stream *Output, bool_t bFo
     else 
         return ERR_INVALID_DATA;
 
-    STORE16BE(Cursor,Element->LocalTimecode);
+    STORE16BE(Cursor,Element->LocalTimestamp);
     Cursor += 2;
 
     *Cursor = 0;
@@ -1825,11 +1824,11 @@ static err_t RenderBlockData(matroska_block *Element, stream *Output, bool_t bFo
             if (!Elt)
                 return ERR_INVALID_DATA; // TODO: support encryption
 
-            Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo());
+            Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo(),ForProfile);
 #if defined(CONFIG_ZLIB)
-            if (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER && EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_ZLIB)
+            if (Header == NULL || (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER && EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_ZLIB))
 #else
-            if (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER)
+            if (Header == NULL || EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER)
 #endif
 			{
 				Err = ERR_NOT_SUPPORTED;
@@ -1850,7 +1849,7 @@ static err_t RenderBlockData(matroska_block *Element, stream *Output, bool_t bFo
 #endif
 
     if (Element->Lacing == LACING_AUTO)
-        Element->Lacing = GetBestLacingType(Element);
+        Element->Lacing = GetBestLacingType(Element, ForProfile);
     if (Element->Lacing != LACING_NONE)
     {
         uint8_t *LaceHead = malloc(1 + ARRAYCOUNT(Element->SizeList,int32_t)*4);
@@ -1903,6 +1902,7 @@ static err_t RenderBlockData(matroska_block *Element, stream *Output, bool_t bFo
     Cursor = ARRAYBEGIN(Element->Data,uint8_t);
     if (Header && (CompressionScope & MATROSKA_COMPR_SCOPE_BLOCK))
     {
+        int32_t* i;
         if (Header && Header->Context==MATROSKA_getContextContentCompAlgo())
         {
 #if defined(CONFIG_ZLIB)
@@ -1979,14 +1979,14 @@ static matroska_block *CopyBlockInfo(const matroska_block *Element, const void *
         Result->IsDiscardable = Element->IsDiscardable;
         Result->Invisible = Element->Invisible;
 #if 0 // computed once blocks are added
-        Result->LocalTimecode = Element->LocalTimecode;
-        Result->LocalTimecodeUsed = Element->LocalTimecodeUsed;
-	    Result->GlobalTimecode = Element->GlobalTimecode;
+        Result->LocalTimestamp = Element->LocalTimestamp;
+        Result->LocalTimestampUsed = Element->LocalTimestampUsed;
+	    Result->GlobalTimestamp = Element->GlobalTimestamp;
         Result->Lacing = Element->Lacing;
         Result->FirstFrameLocation = Element->FirstFrameLocation;
         array SizeList = Element->; // int32_t
         array Data = Element->; // uint8_t
-        array Durations = Element->; // timecode_t
+        array Durations = Element->; // mkv_timestamp_t
 #else
         Result->Base.Base.bValueIsSet = 0;
 #endif
@@ -2000,7 +2000,7 @@ static matroska_block *CopyBlockInfo(const matroska_block *Element, const void *
     return Result;
 }
 
-static filepos_t UpdateBlockSize(matroska_block *Element, bool_t bWithDefault, bool_t bForceWithoutMandatory)
+static filepos_t UpdateBlockSize(matroska_block *Element, bool_t bWithDefault, bool_t bForceWithoutMandatory, int ForProfile)
 {
     int CompressionScope = MATROSKA_COMPR_SCOPE_BLOCK;
     if (EBML_ElementNeedsDataSizeUpdate(Element, bWithDefault))
@@ -2009,7 +2009,7 @@ static filepos_t UpdateBlockSize(matroska_block *Element, bool_t bWithDefault, b
 #if defined(CONFIG_EBML_WRITING)
         ebml_element *Elt, *Elt2;
         if (Element->Lacing == LACING_AUTO)
-            Element->Lacing = GetBestLacingType(Element);
+            Element->Lacing = GetBestLacingType(Element,ForProfile);
 
         assert(Element->WriteTrack!=NULL);
         Elt = EBML_MasterFindChild(Element->WriteTrack, MATROSKA_getContextContentEncodings());
@@ -2029,11 +2029,11 @@ static filepos_t UpdateBlockSize(matroska_block *Element, bool_t bWithDefault, b
                 if (!Elt)
                     return ERR_INVALID_DATA; // TODO: support encryption
 
-                Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo());
+                Header = EBML_MasterGetChild((ebml_master*)Elt, MATROSKA_getContextContentCompAlgo(),ForProfile);
 #if defined(CONFIG_ZLIB)
-                if (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER && EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_ZLIB)
+                if (Header == NULL || (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER && EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_ZLIB))
 #else
-                if (EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER)
+                if (Header == NULL || EBML_IntegerValue((ebml_integer*)Header)!=MATROSKA_BLOCK_COMPR_HEADER)
 #endif
                     return ERR_INVALID_DATA;
 
@@ -2101,7 +2101,7 @@ static filepos_t UpdateBlockSize(matroska_block *Element, bool_t bWithDefault, b
 		    default:
 			    Element->Base.Base.DataSize = 4 + 1; // 1 for the lacing head
 			    if (Element->Lacing == LACING_AUTO)
-				    LacingHere = GetBestLacingType(Element);
+				    LacingHere = GetBestLacingType(Element,ForProfile);
 			    else
 				    LacingHere = Element->Lacing;
 			    switch (LacingHere)
@@ -2136,14 +2136,14 @@ static filepos_t UpdateBlockSize(matroska_block *Element, bool_t bWithDefault, b
     }
 
     // skip the EBML_BINARY_CLASS version as we have another internal buffer
-	return INHERITED(Element,ebml_element_vmt,EBML_BINARY_CLASS)->UpdateDataSize(Element, bWithDefault, bForceWithoutMandatory);
+	return INHERITED(Element,ebml_element_vmt,EBML_BINARY_CLASS)->UpdateDataSize(Element, bWithDefault, bForceWithoutMandatory, ForProfile);
 }
 
 static int CmpCuePoint(const matroska_cuepoint* a,const matroska_cuepoint* b)
 {
 	// returns a > b
-    timecode_t TA = MATROSKA_CueTimecode(a);
-    timecode_t TB = MATROSKA_CueTimecode(b);
+    mkv_timestamp_t TA = MATROSKA_CueTimestamp(a);
+    mkv_timestamp_t TB = MATROSKA_CueTimestamp(b);
     int NA,NB;
     if (TB < TA)
         return 1;
@@ -2230,18 +2230,18 @@ static int CmpAttachedFile(const ebml_master* a,const ebml_master* b)
 	return 1;
 }
 
-matroska_cuepoint *MATROSKA_CuesGetTimecodeStart(const ebml_element *Cues, timecode_t Timecode)
+matroska_cuepoint *MATROSKA_CuesGetTimestampStart(const ebml_element *Cues, mkv_timestamp_t Timestamp)
 {
 	matroska_cuepoint *Elt,*Prev=NULL;
 
 	assert(Cues!=NULL);
 	assert(EBML_ElementIsType(Cues, MATROSKA_getContextCues()));
-	if (Timecode==INVALID_TIMECODE_T)
+	if (Timestamp==INVALID_TIMESTAMP_T)
 		return NULL;
 
 	for (Elt=(matroska_cuepoint*)EBML_MasterChildren(Cues);Elt;Prev=Elt, Elt=(matroska_cuepoint*)EBML_MasterNext(Elt))
 	{
-		if (MATROSKA_CueTimecode(Elt) > Timecode)
+		if (MATROSKA_CueTimestamp(Elt) > Timestamp)
 			break;
 	}
 
@@ -2261,13 +2261,13 @@ static bool_t ValidateSizeSegUID(const ebml_binary *p)
 
 static err_t CreateBlock(matroska_block *p)
 {
-	p->GlobalTimecode = INVALID_TIMECODE_T;
+	p->GlobalTimestamp = INVALID_TIMESTAMP_T;
 	return ERR_NONE;
 }
 
 static err_t CreateCluster(matroska_cluster *p)
 {
-	p->GlobalTimecode = INVALID_TIMECODE_T;
+	p->GlobalTimestamp = INVALID_TIMESTAMP_T;
     return ERR_NONE;
 }
 
@@ -2285,8 +2285,8 @@ static err_t ReadTrackEntry(matroska_trackentry *Element, stream *Input, const e
                 ebml_element *Elt =  EBML_MasterFindChild((ebml_master*)Elt2,MATROSKA_getContextContentCompression());
                 if (Elt)
                 {
-                    ebml_integer *Scope =  (ebml_integer*)EBML_MasterFindChild((ebml_master*)Elt2,MATROSKA_getContextContentEncodingScope());
-                    Element->CodecPrivateCompressed = Scope && (EBML_IntegerValue(Scope) & MATROSKA_COMPR_SCOPE_PRIVATE)!=0;
+                    ebml_integer *EncScope =  (ebml_integer*)EBML_MasterFindChild((ebml_master*)Elt2,MATROSKA_getContextContentEncodingScope());
+                    Element->CodecPrivateCompressed = EncScope && (EBML_IntegerValue(EncScope) & MATROSKA_COMPR_SCOPE_PRIVATE)!=0;
                 }
             }
         }
@@ -2294,7 +2294,7 @@ static err_t ReadTrackEntry(matroska_trackentry *Element, stream *Input, const e
     return Result;
 }
 
-static filepos_t UpdateDataSizeTrackEntry(matroska_trackentry *Element, bool_t bWithDefault, bool_t bForceWithoutMandatory)
+static filepos_t UpdateDataSizeTrackEntry(matroska_trackentry *Element, bool_t bWithDefault, bool_t bForceWithoutMandatory, int ForProfile)
 {
 #if defined(CONFIG_ZLIB)
     bool_t CodecPrivateCompressed = 0;
@@ -2359,7 +2359,7 @@ static filepos_t UpdateDataSizeTrackEntry(matroska_trackentry *Element, bool_t b
         }
     }
 #endif
-    return INHERITED(Element,ebml_element_vmt,MATROSKA_TRACKENTRY_CLASS)->UpdateDataSize(Element, bWithDefault, bForceWithoutMandatory);
+    return INHERITED(Element,ebml_element_vmt,MATROSKA_TRACKENTRY_CLASS)->UpdateDataSize(Element, bWithDefault, bForceWithoutMandatory, ForProfile);
 }
 
 static matroska_trackentry *CopyTrackEntry(const matroska_trackentry *Element, const void *Cookie)
@@ -2371,7 +2371,7 @@ static matroska_trackentry *CopyTrackEntry(const matroska_trackentry *Element, c
 }
 
 
-int MATROSKA_TrackGetBlockCompression(const matroska_trackentry *TrackEntry)
+int MATROSKA_TrackGetBlockCompression(const matroska_trackentry *TrackEntry, int ForProfile)
 {
     ebml_element *Encodings, *Elt, *Elt2;
     assert(Node_IsPartOf(TrackEntry, MATROSKA_TRACKENTRY_CLASS));
@@ -2381,17 +2381,17 @@ int MATROSKA_TrackGetBlockCompression(const matroska_trackentry *TrackEntry)
     Elt2 = EBML_MasterFindChild((ebml_master*)Encodings,MATROSKA_getContextContentEncoding());
     if (!Elt2)
         return MATROSKA_BLOCK_COMPR_NONE;
-    Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentEncodingScope());
+    Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentEncodingScope(), ForProfile);
     if (!(EBML_IntegerValue((ebml_integer*)Elt) & MATROSKA_COMPR_SCOPE_BLOCK))
         return MATROSKA_BLOCK_COMPR_NONE;
     Elt =  EBML_MasterFindChild((ebml_master*)Elt2,MATROSKA_getContextContentCompression());
     if (!Elt)
         return MATROSKA_BLOCK_COMPR_NONE;
-    Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompAlgo());
+    Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompAlgo(), ForProfile);
     return (int)EBML_IntegerValue((ebml_integer*)Elt2);
 }
 
-bool_t MATROSKA_TrackSetCompressionZlib(matroska_trackentry *TrackEntry, int Scope)
+bool_t MATROSKA_TrackSetCompressionZlib(matroska_trackentry *TrackEntry, int Scope, int ForProfile)
 {
     // force zlib compression
     bool_t HadEncoding;
@@ -2405,20 +2405,20 @@ bool_t MATROSKA_TrackSetCompressionZlib(matroska_trackentry *TrackEntry, int Sco
 
     if (Scope!=0)
     {
-        Encodings = EBML_MasterGetChild((ebml_master*)TrackEntry,MATROSKA_getContextContentEncodings());
-        Elt2 = EBML_MasterGetChild((ebml_master*)Encodings,MATROSKA_getContextContentEncoding());
+        Encodings = EBML_MasterGetChild((ebml_master*)TrackEntry,MATROSKA_getContextContentEncodings(), ForProfile);
+        Elt2 = EBML_MasterGetChild((ebml_master*)Encodings,MATROSKA_getContextContentEncoding(), ForProfile);
 
-        Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentEncodingScope());
+        Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentEncodingScope(), ForProfile);
         EBML_IntegerSetValue((ebml_integer*)Elt, Scope);
 
-        Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentCompression());
-        Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompAlgo());
+        Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentCompression(), ForProfile);
+        Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompAlgo(), ForProfile);
         EBML_IntegerSetValue((ebml_integer*)Elt2, MATROSKA_BLOCK_COMPR_ZLIB);
     }
     return HadEncoding;
 }
 
-bool_t MATROSKA_TrackSetCompressionHeader(matroska_trackentry *TrackEntry, const uint8_t *Header, size_t HeaderSize)
+bool_t MATROSKA_TrackSetCompressionHeader(matroska_trackentry *TrackEntry, const uint8_t *Header, size_t HeaderSize, int ForProfile)
 {
     bool_t HadEncoding;
     ebml_element *Encodings, *Elt, *Elt2;
@@ -2431,13 +2431,13 @@ bool_t MATROSKA_TrackSetCompressionHeader(matroska_trackentry *TrackEntry, const
 
     if (Header && HeaderSize)
     {
-        Encodings = EBML_MasterGetChild((ebml_master*)TrackEntry,MATROSKA_getContextContentEncodings());
-        Elt2 = EBML_MasterGetChild((ebml_master*)Encodings,MATROSKA_getContextContentEncoding());
+        Encodings = EBML_MasterGetChild((ebml_master*)TrackEntry,MATROSKA_getContextContentEncodings(), ForProfile);
+        Elt2 = EBML_MasterGetChild((ebml_master*)Encodings,MATROSKA_getContextContentEncoding(), ForProfile);
 
-        Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentCompression());
-        Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompAlgo());
+        Elt =  EBML_MasterGetChild((ebml_master*)Elt2,MATROSKA_getContextContentCompression(), ForProfile);
+        Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompAlgo(), ForProfile);
         EBML_IntegerSetValue((ebml_integer*)Elt2, MATROSKA_BLOCK_COMPR_HEADER);
-        Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompSettings());
+        Elt2 = EBML_MasterGetChild((ebml_master*)Elt,MATROSKA_getContextContentCompSettings(), ForProfile);
         EBML_BinarySetData((ebml_binary*)Elt2, Header, HeaderSize);
     }
     return HadEncoding;

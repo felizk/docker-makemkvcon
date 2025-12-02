@@ -67,6 +67,12 @@ static err_t ReadData(ebml_date *Element, stream *Input, const ebml_parser_conte
     }
 
     assert(Element->Base.DataSize<=8);
+    if (Element->Base.DataSize > 8)
+    {
+        Result = ERR_INVALID_DATA;
+        goto failed;
+    }
+
     Result = Stream_Read(Input,Value,(size_t)Element->Base.DataSize,NULL);
     if (Result != ERR_NONE)
         goto failed;
@@ -83,9 +89,9 @@ failed:
     return Result;
 }
 
-static void PostCreate(ebml_date *Element, bool_t SetDefault)
+static void PostCreate(ebml_date *Element, bool_t SetDefault, int ForProfile)
 {
-    INHERITED(Element,ebml_element_vmt,EBML_DATE_CLASS)->PostCreate(Element, SetDefault);
+    INHERITED(Element,ebml_element_vmt,EBML_DATE_CLASS)->PostCreate(Element, SetDefault, ForProfile);
     Element->Base.DefaultSize = 8;
     Element->Base.bNeedDataSizeUpdate = 0;
 }
