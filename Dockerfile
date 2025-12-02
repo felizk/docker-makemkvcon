@@ -48,7 +48,7 @@ FROM --platform=$BUILDPLATFORM alpine:3.16 AS mkclean
 ARG TARGETPLATFORM
 COPY --from=xx / /
 COPY src/mkclean /build
-COPY foundation-source-mkclean-0.9.0 /build
+COPY mkclean-0.9.0 /build
 RUN /build/build.sh
 RUN xx-verify /tmp/mkclean/mkclean 
 

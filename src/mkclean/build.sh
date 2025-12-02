@@ -30,11 +30,9 @@ xx-apk --no-cache --no-scripts add \
 
 cd build
 mkdir build
-gcc corec/tools/coremake/coremake.c -o coremake
-./coremake gcc_linux_x64
 cd build
-#cmake ..
-make -C mkclean
+cmake ..
+make mkclean
 
 mkdir /tmp/mkclean
 cp -v /build/build/mkclean/mkclean /tmp/mkclean/
