@@ -8,7 +8,7 @@
 ARG DOCKER_IMAGE_VERSION=
 
 # Define software versions.
-ARG MAKEMKV_VERSION=1.18.2
+ARG MAKEMKV_VERSION=1.18.3
 
 # Define software download URLs.
 ARG MAKEMKV_OSS_URL=https://www.makemkv.com/download/makemkv-oss-${MAKEMKV_VERSION}.tar.gz
@@ -53,7 +53,7 @@ RUN /build/build.sh
 RUN xx-verify /tmp/mkclean/mkclean 
 
 # Pull base image.
-FROM mcr.microsoft.com/dotnet/runtime:9.0-alpine
+FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine
 
 ARG DOCKER_IMAGE_VERSION
 ARG MAKEMKV_VERSION
