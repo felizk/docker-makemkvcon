@@ -19,7 +19,7 @@ function log {
 
 apk --no-cache add \
     clang \
-    llvm13 \
+    llvm \
     make \
     cmake \
 
@@ -31,7 +31,8 @@ xx-apk --no-cache --no-scripts add \
 cd build
 mkdir build
 cd build
-cmake ..
+# The mkclean sources declare a CMake version older than CMake 4 accepts.
+cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
 make mkclean
 
 mkdir /tmp/mkclean

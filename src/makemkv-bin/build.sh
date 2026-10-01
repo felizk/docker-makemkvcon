@@ -10,8 +10,11 @@ export DEBIAN_FRONTEND=noninteractive
 
 SCRIPT_DIR="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
 
-FFMPEG_VERSION=5.1.6
+FFMPEG_VERSION=8.1.3
 FDK_AAC_VERSION=2.0.3
+
+FFMPEG_SHA256=7138d28c96d9d3e3af4ee3d8cad72741f8ffb40da90c1112235dea3ecd3178a3
+FDK_AAC_SHA256=e25671cd96b10bad896aa42ab91a695a9e573395262baed4e4a2ff178d6a3a78
 
 FFMPEG_URL=https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz
 FDK_AAC_URL=https://github.com/mstorsjo/fdk-aac/archive/v${FDK_AAC_VERSION}.tar.gz
@@ -22,8 +25,16 @@ function log {
     echo ">>> $*"
 }
 
+# Download a file and verify its SHA-256 checksum.
+function download {
+    curl -# -L -f -o "$3" "$1"
+    echo "$2  $3" | sha256sum -c -
+}
+
 MAKEMKV_OSS_URL="$1"
-MAKEMKV_BIN_URL="$2"
+MAKEMKV_OSS_SHA256="$2"
+MAKEMKV_BIN_URL="$3"
+MAKEMKV_BIN_SHA256="$4"
 
 TARGET_SYSTEM_LIB_DIR="/usr/lib"
 TARGET_SYSTEM_INCLUDE_DIR="/usr/include"
@@ -47,6 +58,11 @@ fi
 
 if [ -z "$MAKEMKV_BIN_URL" ]; then
     log "ERROR: MakeMKV BIN URL missing."
+    exit 1
+fi
+
+if [ -z "$MAKEMKV_OSS_SHA256" ] || [ -z "$MAKEMKV_BIN_SHA256" ]; then
+    log "ERROR: MakeMKV checksum missing."
     exit 1
 fi
 
@@ -85,19 +101,23 @@ xx-apt-get install -y --no-install-recommends \
 
 log "Downloading fdk-aac..."
 mkdir /tmp/fdk-aac
-curl -# -L -f ${FDK_AAC_URL} | tar -xz --strip 1 -C /tmp/fdk-aac
+download "${FDK_AAC_URL}" "${FDK_AAC_SHA256}" /tmp/fdk-aac.tar.gz
+tar -xzf /tmp/fdk-aac.tar.gz --strip 1 -C /tmp/fdk-aac
 
 log "Downloading ffmpeg..."
 mkdir /tmp/ffmpeg
-curl -# -L -f ${FFMPEG_URL} | tar -xJ --strip 1 -C /tmp/ffmpeg
+download "${FFMPEG_URL}" "${FFMPEG_SHA256}" /tmp/ffmpeg.tar.xz
+tar -xJf /tmp/ffmpeg.tar.xz --strip 1 -C /tmp/ffmpeg
 
 log "Downloading MakeMKV OSS..."
 mkdir /tmp/makemkv-oss
-curl -# -L -f ${MAKEMKV_OSS_URL} | tar -xz --strip 1 -C /tmp/makemkv-oss
+download "${MAKEMKV_OSS_URL}" "${MAKEMKV_OSS_SHA256}" /tmp/makemkv-oss.tar.gz
+tar -xzf /tmp/makemkv-oss.tar.gz --strip 1 -C /tmp/makemkv-oss
 
 log "Downloading MakeMKV bin..."
 mkdir /tmp/makemkv-bin
-curl -# -L -f ${MAKEMKV_BIN_URL} | tar -xz --strip 1 -C /tmp/makemkv-bin
+download "${MAKEMKV_BIN_URL}" "${MAKEMKV_BIN_SHA256}" /tmp/makemkv-bin.tar.gz
+tar -xzf /tmp/makemkv-bin.tar.gz --strip 1 -C /tmp/makemkv-bin
 
 #
 # Compile fdk-aac.

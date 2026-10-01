@@ -28,9 +28,15 @@ function log {
 }
 
 MAKEMKV_URL="$1"
+MAKEMKV_SHA256="$2"
 
 if [ -z "$MAKEMKV_URL" ]; then
     log "ERROR: MakeMKV URL missing."
+    exit 1
+fi
+
+if [ -z "$MAKEMKV_SHA256" ]; then
+    log "ERROR: MakeMKV checksum missing."
     exit 1
 fi
 
@@ -40,7 +46,7 @@ fi
 apk --no-cache add \
     curl \
     clang \
-    llvm13 \
+    llvm \
     make \
     patch \
 
@@ -59,7 +65,9 @@ xx-apk --no-cache --no-scripts add \
 
 log "Downloading MakeMKV..."
 mkdir /tmp/makemkv
-curl -# -L -f ${MAKEMKV_URL} | tar xz --strip 1 -C /tmp/makemkv
+curl -# -L -f -o /tmp/makemkv.tar.gz "${MAKEMKV_URL}"
+echo "${MAKEMKV_SHA256}  /tmp/makemkv.tar.gz" | sha256sum -c -
+tar xzf /tmp/makemkv.tar.gz --strip 1 -C /tmp/makemkv
 
 #
 # Compile MakeMKV.
