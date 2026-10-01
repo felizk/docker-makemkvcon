@@ -7,8 +7,12 @@
 # Docker image version is provided via build arg.
 ARG DOCKER_IMAGE_VERSION=
 
+# Base image of the final image. Can be overridden to build a variant, e.g.
+# mcr.microsoft.com/dotnet/aspnet:10.0-alpine.
+ARG BASE_IMAGE=mcr.microsoft.com/dotnet/runtime:10.0-alpine
+
 # Define software versions.
-ARG MAKEMKV_VERSION=1.18.3
+ARG MAKEMKV_VERSION=2.0.0
 
 # Define software download URLs.
 ARG MAKEMKV_OSS_URL=https://www.makemkv.com/download/makemkv-oss-${MAKEMKV_VERSION}.tar.gz
@@ -53,7 +57,7 @@ RUN /build/build.sh
 RUN xx-verify /tmp/mkclean/mkclean 
 
 # Pull base image.
-FROM mcr.microsoft.com/dotnet/runtime:10.0-alpine
+FROM ${BASE_IMAGE}
 
 ARG DOCKER_IMAGE_VERSION
 ARG MAKEMKV_VERSION

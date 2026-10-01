@@ -83,6 +83,34 @@ jobs:
           cache-to: type=gha,mode=max
           file: Dockerfile
 
+      # Same image, but based on dotnet/aspnet instead of dotnet/runtime.
+      # Published under the same tags with an "-aspnet" suffix.
+      - name: Extract Docker metadata (aspnet)
+        id: meta-aspnet
+        uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            suffix=-aspnet,onlatest=true
+
+      # Runs after the build above so the compile stages are reused from the
+      # builder's local cache; only the final stage is rebuilt.
+      - name: Build and push Docker image (aspnet)
+        id: build-and-push-aspnet
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-aspnet.outputs.tags }}
+          labels: ${{ steps.meta-aspnet.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0-alpine
+          cache-from: |
+            type=gha
+            type=gha,scope=aspnet
+          cache-to: type=gha,mode=max,scope=aspnet
+          file: Dockerfile
+
       # Sign the resulting Docker image digest except on PRs.
       # This will only write to the public Rekor transparency log when the Docker
       # repository is public to avoid leaking data.  If you would like to publish
