@@ -1,10 +1,12 @@
 #!/bin/sh
 
 #
-# This script builds the MakeMKV GUI.
+# This script builds the MakeMKV open source helper binaries (mmccextr and
+# mmgplsrv).
 #
-# NOTE: The MakeMKV Makefile also builds the libraries.  Thus, we need to
-#       satisfy dependencies that are not needed by the GUI (e.g. ffmpeg).
+# NOTE: The MakeMKV configure script also checks dependencies of the libraries.
+#       Thus, we need to satisfy dependencies that are not needed by these
+#       binaries (e.g. ffmpeg).
 #
 
 set -e # Exit immediately if a command exits with a non-zero status.
@@ -13,7 +15,7 @@ set -u # Treat unset variables as an error.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Set same default compilation flags as abuild.
-export CFLAGS="-Os -fomit-frame-pointer -DQT_NO_DEBUG_OUTPUT"
+export CFLAGS="-Os -fomit-frame-pointer"
 export CXXFLAGS="$CFLAGS"
 export CPPFLAGS="$CFLAGS"
 export LDFLAGS="-Wl,--strip-all -Wl,--as-needed"
@@ -41,23 +43,15 @@ apk --no-cache add \
     llvm13 \
     make \
     patch \
-    qtchooser \
-    qt5-qtbase-dev \
 
 xx-apk --no-cache --no-scripts add \
     musl-dev \
     gcc \
     g++ \
-    qt5-qtbase-dev \
     openssl-dev \
     expat-dev \
+    zlib-dev \
     ffmpeg-dev \
-
-# Make sure tools used to generate code are the ones from the host.
-if [ "$(xx-info sysroot)" != "/" ]
-then
-    ln -sf /usr/bin/moc $(xx-info sysroot)usr/lib/qt5/bin/moc
-fi
 
 #
 # Download sources.
@@ -72,14 +66,12 @@ curl -# -L -f ${MAKEMKV_URL} | tar xz --strip 1 -C /tmp/makemkv
 #
 
 MAKEMKV_COMPILED_BINS="\
-    out/makemkv \
     out/mmccextr \
     out/mmgplsrv \
 "
 
 log "Patching MakeMKV..."
 patch -d /tmp/makemkv -p1 < "$SCRIPT_DIR/fix-include.patch"
-patch -d /tmp/makemkv -p1 < "$SCRIPT_DIR/launch-url.patch"
 
 log "Configuring MakeMKV..."
 (
@@ -87,10 +79,11 @@ log "Configuring MakeMKV..."
         --build=$(TARGETPLATFORM= xx-clang --print-target-triple) \
         --host=$(xx-clang --print-target-triple) \
         --prefix=/usr \
+        --disable-gui \
 )
 
-# FFmpeg was installed only to satisfy the configure part.  The MakeMKV GUI is
-# not using it.
+# FFmpeg was installed only to satisfy the configure part.  The binaries built
+# here are not using it.
 xx-apk --no-cache --no-scripts del ffmpeg-dev
 
 log "Compiling MakeMKV..."

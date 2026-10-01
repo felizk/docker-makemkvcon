@@ -194,17 +194,6 @@ mkdir /tmp/makemkv-bin/tmp && touch /tmp/makemkv-bin/tmp/eula_accepted
 make DESTDIR="$MAKEMKV_ROOT_DIR" PREFIX=/ -C /tmp/makemkv-bin install
 
 #
-# Compile libwrapper.
-#
-
-log "Compiling libwrapper..."
-$(xx-info)-gcc -o /tmp/libwrapper.so "$SCRIPT_DIR/libwrapper.c" -fPIC -shared -ldl 
-
-log "Installing libwrapper..."
-cp -v /tmp/libwrapper.so "$MAKEMKV_ROOT_DIR"/lib/
-$(xx-info)-strip "$MAKEMKV_ROOT_DIR"/lib/libwrapper.so
-
-#
 # Extract all dependencies.
 #
 
