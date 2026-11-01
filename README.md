@@ -6,7 +6,7 @@ I didn't realize this repo was public, oh well.
 
 ## Image variants
 
-Two variants are published to `ghcr.io/felizk/docker-makemkvcon`:
+Two variants are published to `forgejo.felizk.net/felizk/docker-makemkvcon`:
 
 | Tag | Base image |
 |-----|------------|

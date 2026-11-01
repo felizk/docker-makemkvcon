@@ -1,7 +1,7 @@
 #
 # makemkvcon Dockerfile
 #
-# https://github.com/felizk/docker-makemkvcon
+# https://forgejo.felizk.net/felizk/docker-makemkvcon
 #
 # Based on https://github.com/jlesage/docker-makemkv
 #

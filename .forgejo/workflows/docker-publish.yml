@@ -1,0 +1,88 @@
+name: Docker
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "master" ]
+    # Publish semver tags as releases.
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: https://github.com/actions/checkout@v4
+
+      # The registry is the Forgejo instance itself: strip the scheme from the
+      # server URL. Image names must be lowercase.
+      - name: Registry
+        id: registry
+        run: |
+          host="${GITHUB_SERVER_URL#*://}"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+          echo "image=$host/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Set up Docker Buildx
+        uses: https://github.com/docker/setup-buildx-action@v3
+
+      # Log in except on PR
+      - name: Log into registry
+        if: github.event_name != 'pull_request'
+        uses: https://github.com/docker/login-action@v3
+        with:
+          registry: ${{ steps.registry.outputs.host }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      # Branch/tag names as image tags, e.g. :master
+      - name: Extract Docker metadata
+        id: meta
+        uses: https://github.com/docker/metadata-action@v5
+        with:
+          images: ${{ steps.registry.outputs.image }}
+
+      # Build and push Docker image with Buildx (don't push on PR)
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: https://github.com/docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ steps.registry.outputs.image }}:master
+          cache-to: type=inline
+          file: Dockerfile
+
+      # Same image, but based on dotnet/aspnet instead of dotnet/runtime.
+      # Published under the same tags with an "-aspnet" suffix.
+      - name: Extract Docker metadata (aspnet)
+        id: meta-aspnet
+        uses: https://github.com/docker/metadata-action@v5
+        with:
+          images: ${{ steps.registry.outputs.image }}
+          flavor: |
+            suffix=-aspnet,onlatest=true
+
+      # Runs after the build above so the compile stages are reused from the
+      # builder's local cache; only the final stage is rebuilt.
+      - name: Build and push Docker image (aspnet)
+        id: build-and-push-aspnet
+        uses: https://github.com/docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-aspnet.outputs.tags }}
+          labels: ${{ steps.meta-aspnet.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0-alpine
+          cache-from: |
+            type=registry,ref=${{ steps.registry.outputs.image }}:master
+            type=registry,ref=${{ steps.registry.outputs.image }}:master-aspnet
+          cache-to: type=inline
+          file: Dockerfile
